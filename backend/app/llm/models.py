@@ -1,6 +1,6 @@
 """
 LLM 객체 생성 관리 모듈
-coordinator, cypher, answer LLM을 각각 독립적인 환경변수 기반으로 제공한다.
+coordinator, cypher, sql, answer LLM을 각각 독립적인 환경변수 기반으로 제공한다.
 """
 import logging
 from langchain_openai import ChatOpenAI
@@ -30,6 +30,18 @@ def get_cypher_llm() -> ChatOpenAI:
         max_tokens=2048,
         openai_api_key=settings.cypher_api_key,
         openai_api_base=settings.cypher_base_url,
+    )
+
+
+def get_sql_llm() -> ChatOpenAI:
+    """sql LLM 반환 - 자연어 → ClickHouse SQL 변환 전용"""
+    logger.debug(f"sql LLM 생성: {settings.sql_model}")
+    return ChatOpenAI(
+        model=settings.sql_model,
+        temperature=0.0,
+        max_tokens=2048,
+        openai_api_key=settings.sql_api_key or settings.coordinator_api_key,
+        openai_api_base=settings.sql_base_url,
     )
 
 

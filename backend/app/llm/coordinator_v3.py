@@ -228,10 +228,16 @@ async def stream_coordinator(
 
                 # tool_result 누적
                 if tool_result:
-                    for f in ("graph", "table", "chart", "cypher"):
+                    for f in ("graph", "table", "chart", "analytics", "cypher", "sql"):
                         val = getattr(tool_result, f, None)
                         if val is not None:
                             setattr(accumulated_tool_result, f, val)
+                    if tool_result.sources:
+                        current = accumulated_tool_result.sources or []
+                        for source in tool_result.sources:
+                            if source not in current:
+                                current.append(source)
+                        accumulated_tool_result.sources = current
                     if tool_result.summary:
                         accumulated_tool_result.summary = (
                             f"{accumulated_tool_result.summary}\n{tool_result.summary}".strip()

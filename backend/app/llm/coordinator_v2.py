@@ -53,8 +53,18 @@ def _merge_tool_result(base: ToolResult, incoming: ToolResult | None) -> ToolRes
         merged.table = incoming.table
     if incoming.chart is not None:
         merged.chart = incoming.chart
+    if incoming.analytics is not None:
+        merged.analytics = incoming.analytics
     if incoming.cypher:
         merged.cypher = incoming.cypher
+    if incoming.sql:
+        merged.sql = incoming.sql
+    if incoming.sources:
+        current = merged.sources or []
+        for source in incoming.sources:
+            if source not in current:
+                current.append(source)
+        merged.sources = current
     if incoming.summary:
         if merged.summary:
             parts = [p.strip() for p in [merged.summary, incoming.summary] if p.strip()]
@@ -247,16 +257,41 @@ def _parse_tool_result(tool_name: str, output: str) -> tuple[ToolResult | None, 
                 },
                 table=data.get("result", data.get("raw", [])),
                 summary=data.get("answer", ""),
+                sources=["neo4j"],
             )
             row_count = data.get("row_count", "?")
             cypher = data.get("cypher", "")
-            summary = f"{row_count}건 반환"
+            summary = f"Neo4j {row_count}건 반환"
             if cypher:
                 summary += f"\n```cypher\n{cypher}\n```"
                 actions.append(ChatAction(type="apply_query", query=cypher))
             tab = "graph" if data.get("nodes") else "table"
             actions.append(ChatAction(type="open_tab", tab=tab))
             return result, actions, summary
+
+        if tool_name == "clickhouse_query_tool":
+            sql = data.get("sql", "")
+            rows = data.get("result", [])
+            result = ToolResult(
+                table=rows,
+                analytics={
+                    "result": rows,
+                    "row_count": data.get("row_count", len(rows)),
+                    "execution_time_ms": data.get("execution_time_ms"),
+                    "source": "clickhouse",
+                },
+                sql=sql,
+                summary=data.get("summary", ""),
+                sources=["clickhouse"],
+            )
+            summary = data.get("summary", f"ClickHouse {len(rows)}건 반환")
+            actions.append(ChatAction(type="open_tab", tab="table"))
+            return result, actions, summary
+
+        if tool_name == "clickhouse_schema_tool":
+            tables = data.get("tables", {})
+            summary = f"ClickHouse 스키마 확인: 테이블 {len(tables)}개"
+            return ToolResult(summary=summary, sources=["clickhouse"]), actions, summary
 
         if tool_name == "table_summary_tool":
             columns = data.get("columns", [])

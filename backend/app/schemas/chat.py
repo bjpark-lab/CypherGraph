@@ -40,7 +40,10 @@ class ToolResult(BaseModel):
     graph: Any | None = None
     table: Any | None = None
     chart: Any | None = None
+    analytics: Any | None = None
     cypher: str | None = None
+    sql: str | None = None
+    sources: list[str] | None = None
     summary: str | None = None
 
 

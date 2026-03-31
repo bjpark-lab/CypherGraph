@@ -91,6 +91,13 @@ class Settings(BaseSettings):
     clickhouse_timeout: int = Field(default=10, alias="CLICKHOUSE_TIMEOUT")
     clickhouse_max_rows: int = Field(default=1000, alias="CLICKHOUSE_MAX_ROWS")
 
+    # SQL 생성용 LLM 설정
+    sql_model: str = Field(default="minimax/minimax-m2.5:free", alias="SQL_MODEL")
+    sql_api_key: str = Field(default="", alias="SQL_API_KEY")
+    sql_base_url: str = Field(
+        default="https://openrouter.ai/api/v1", alias="SQL_BASE_URL"
+    )
+
     model_config = {"env_file": ".env", "populate_by_name": True}
 
 
