@@ -1,13 +1,15 @@
 # RCP Cypher
 
-Neo4j에 저장된 **wafer / recipe / metrology 데이터**를 그래프, 테이블, 차트, AI 채팅으로 함께 탐색하는 웹 애플리케이션입니다.
+Neo4j와 ClickHouse에 저장된 **wafer / recipe / metrology 데이터**를 그래프, 테이블, 차트, AI 채팅으로 함께 탐색하는 웹 애플리케이션입니다.
 
 ## 주요 기능
 
 - **그래프 뷰** — Cytoscape.js 기반 노드/엣지 시각화, 노드 클릭 시 연결 관계 강조
 - **테이블 뷰** — 정렬/필터/행 선택 지원 (TanStack Table)
 - **차트 뷰** — step 추이, 파라미터 분포 등 분석용 차트 (Recharts)
-- **AI 채팅** — LLM이 자연어 질문을 Cypher로 변환해 Neo4j를 조회하고 결과를 스트리밍으로 답변
+- **AI 채팅** — 질문 성격에 따라 Neo4j 또는 ClickHouse를 선택해 조회하고 결과를 스트리밍으로 답변
+- **멀티 DB 라우팅** — 관계 탐색은 Neo4j, 집계/분포/추세 분석은 ClickHouse 우선 사용
+- **ClickHouse 안전장치** — read-only SQL guard, LIMIT 강제, schema 기반 질의 생성
 - **Electron 앱** — 데스크톱 앱으로도 실행 가능 (화면 캡처 방지 포함)
 
 ## 기술 스택
@@ -18,7 +20,7 @@ Neo4j에 저장된 **wafer / recipe / metrology 데이터**를 그래프, 테이
 | 상태 관리 | Zustand + TanStack Query |
 | 백엔드 | FastAPI + Python 3.11+ (uv) |
 | LLM 오케스트레이션 | LangChain + LangGraph (`create_react_agent`) |
-| 데이터베이스 | Neo4j 5 (Docker) |
+| 데이터베이스 | Neo4j 5 (그래프 탐색) + ClickHouse (집계/분포/추세 분석) |
 | LLM API | OpenRouter (`minimax/minimax-m2.5:free` 기본값) |
 
 ---
@@ -32,6 +34,7 @@ Neo4j에 저장된 **wafer / recipe / metrology 데이터**를 그래프, 테이
 - Node.js 18+
 - Docker & Docker Compose
 - OpenRouter API 키 ([openrouter.ai](https://openrouter.ai) 무료 가입)
+- 외부 ClickHouse 서버 접속 정보 (선택이지만 멀티 DB 라우팅 테스트 시 필요)
 
 ---
 
@@ -72,7 +75,20 @@ CYPHER_BASE_URL=https://openrouter.ai/api/v1
 ANSWER_API_KEY=sk-or-v1-여기에_openrouter_키_입력
 ANSWER_BASE_URL=https://openrouter.ai/api/v1
 
+SQL_MODEL=minimax/minimax-m2.5:free
+SQL_API_KEY=sk-or-v1-여기에_openrouter_키_입력
+SQL_BASE_URL=https://openrouter.ai/api/v1
+
 MAX_QUERY_RESULTS=100
+CLICKHOUSE_MAX_ROWS=1000
+
+# 선택: ClickHouse 분석 DB
+CLICKHOUSE_URI=https://username:password@clickhouse-host:8443/default
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASSWORD=your_clickhouse_password_here
+CLICKHOUSE_DATABASE=default
+CLICKHOUSE_SECURE=true
+CLICKHOUSE_TIMEOUT=10
 EOF
 ```
 
@@ -122,13 +138,23 @@ npm run dev:electron
 | `COORDINATOR_MODEL` | `None` | 코디네이터 LLM 모델 (필수 설정) |
 | `CYPHER_MODEL` | `None` | Cypher 생성 LLM 모델 (필수 설정) |
 | `ANSWER_MODEL` | `None` | 답변 정리 LLM 모델 (필수 설정) |
+| `SQL_MODEL` | `minimax/minimax-m2.5:free` | ClickHouse SQL 생성 LLM 모델 |
 | `COORDINATOR_API_KEY` | `None` | 코디네이터 전용 API 키 |
 | `COORDINATOR_BASE_URL` | `None` | 코디네이터 전용 API 엔드포인트 |
 | `CYPHER_API_KEY` | `None` | Cypher 전용 API 키 |
 | `CYPHER_BASE_URL` | `None` | Cypher 전용 API 엔드포인트 |
 | `ANSWER_API_KEY` | `None` | 답변 정리 전용 API 키 |
 | `ANSWER_BASE_URL` | `None` | 답변 정리 전용 API 엔드포인트 |
-| `MAX_QUERY_RESULTS` | `100` | 쿼리 결과 최대 행 수 |
+| `SQL_API_KEY` | `None` | ClickHouse SQL 생성용 API 키 |
+| `SQL_BASE_URL` | `https://openrouter.ai/api/v1` | ClickHouse SQL 생성용 API 엔드포인트 |
+| `MAX_QUERY_RESULTS` | `100` | Neo4j 쿼리 결과 최대 행 수 |
+| `CLICKHOUSE_URI` | — | ClickHouse 접속 URI |
+| `CLICKHOUSE_USER` | `default` | ClickHouse 사용자명 |
+| `CLICKHOUSE_PASSWORD` | — | ClickHouse 비밀번호 |
+| `CLICKHOUSE_DATABASE` | `default` | ClickHouse 기본 데이터베이스 |
+| `CLICKHOUSE_SECURE` | `false` | HTTPS/TLS 사용 여부 |
+| `CLICKHOUSE_TIMEOUT` | `10` | ClickHouse 연결/응답 타임아웃(초) |
+| `CLICKHOUSE_MAX_ROWS` | `1000` | ClickHouse 결과 최대 행 수 |
 | `DATABASE_URL` | — | PostgreSQL URL (대화 기록 저장, 선택) |
 
 ---
@@ -144,8 +170,8 @@ rcp-cypher/
 │   │   │   ├── coordinator.py    # 에이전트 + 스트리밍
 │   │   │   ├── models.py         # LLM 객체 팩토리
 │   │   │   ├── prompts.py        # 프롬프트 템플릿
-│   │   │   └── tools/            # 개별 tool 구현
-│   │   ├── services/         # Neo4j, query guard
+│   │   │   └── tools/            # Neo4j / ClickHouse tool 구현
+│   │   ├── services/         # Neo4j, ClickHouse, query guard
 │   │   └── schemas/          # Pydantic 모델
 │   └── pyproject.toml
 ├── frontend/                 # React + Electron 프론트엔드
@@ -168,4 +194,4 @@ rcp-cypher/
 | `POST` | `/api/chat/stream` | 채팅 (SSE 스트리밍) |
 | `POST` | `/api/graph/query` | Cypher 직접 실행 |
 | `GET` | `/api/graph/schema` | Neo4j 스키마 조회 |
-| `GET` | `/api/health` | 헬스체크 |
+| `GET` | `/api/health` | Neo4j / ClickHouse 연결 포함 헬스체크 |
