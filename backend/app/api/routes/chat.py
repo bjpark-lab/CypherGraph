@@ -13,6 +13,7 @@ from app.schemas.chat import ChatRequest, ChatResponse
 from app.llm.coordinator_v3 import run_coordinator, stream_coordinator
 from app.core.auth import get_current_user_optional
 from app.core.database import get_db
+from app.core.tracing import ChatTrace
 from app.models.conversation import Conversation, Message
 
 logger = logging.getLogger(__name__)
@@ -34,12 +35,17 @@ async def chat(
     tool 호출 결과와 최종 답변을 반환한다.
     로그인 상태이면 대화 기록을 PostgreSQL에 저장한다.
     """
+    trace = ChatTrace()
     try:
         history = [msg.model_dump() for msg in request.history]
         response = await run_coordinator(
             message=request.message,
             history=history,
             context=request.context,
+            trace=trace,
+        )
+        logger.info(
+            f"[TRACE {response.trace_id}] question_type={response.question_type} sources={response.sources} latency_ms={trace.latency_ms():.1f}"
         )
     except Exception as e:
         logger.error(f"채팅 처리 실패: {e}", exc_info=True)
@@ -66,6 +72,7 @@ async def chat_stream(
     이벤트 타입: step_start | step_end | token | done | error
     """
     history = [msg.model_dump() for msg in request.history]
+    trace = ChatTrace()
 
     async def generate():
         final_data = None
@@ -74,6 +81,7 @@ async def chat_stream(
                 message=request.message,
                 history=history,
                 context=request.context,
+                trace=trace,
             ):
                 yield f"data: {event_json}\n\n"
                 try:
@@ -95,6 +103,12 @@ async def chat_stream(
                     message="",  # 저장 시 content는 별도로 처리
                     actions=[ChatAction(**a) for a in (final_data.get("actions") or [])],
                     tool_results=ToolResult(**(final_data.get("tool_results") or {})),
+                    trace_id=final_data.get("trace_id"),
+                    question_type=final_data.get("question_type"),
+                    sources=final_data.get("sources") or [],
+                )
+                logger.info(
+                    f"[TRACE {response.trace_id}] question_type={response.question_type} sources={response.sources} latency_ms={trace.latency_ms():.1f}"
                 )
                 await _save_messages(db, user["sub"], request, response)
             except Exception as e:

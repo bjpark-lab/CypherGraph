@@ -40,7 +40,10 @@ class ToolResult(BaseModel):
     graph: Any | None = None
     table: Any | None = None
     chart: Any | None = None
+    analytics: Any | None = None
     cypher: str | None = None
+    sql: str | None = None
+    sources: list[str] | None = None
     summary: str | None = None
 
 
@@ -58,3 +61,6 @@ class ChatResponse(BaseModel):
     tool_results: ToolResult = ToolResult()
     steps: list[StepInfo] = []
     reasoning: str | None = None   # 최종 답변 직전 LLM reasoning 전체
+    trace_id: str | None = None
+    question_type: str | None = None
+    sources: list[str] = []

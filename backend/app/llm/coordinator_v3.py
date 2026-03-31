@@ -59,6 +59,9 @@ from app.llm.coordinator_v2 import (
     _split_think_content,
     HISTORY_LIMIT,
 )
+from app.llm.router import classify_question
+from app.llm.answer_formatter import format_final_answer
+from app.core.tracing import ChatTrace
 from app.schemas.chat import ChatResponse, ChatAction, ToolResult, StepInfo
 
 logger = logging.getLogger(__name__)
@@ -102,14 +105,25 @@ async def stream_coordinator(
     message: str,
     history: list[dict] = [],
     context: dict = {},
+    trace: ChatTrace | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     coordinator v3 스트리밍 실행.
     deepagents(LangGraph) 기반으로 tool 루프를 처리한다.
     reasoning_token → token → step_start → step_end → done 순서 보장.
     """
+    trace = trace or ChatTrace()
+    route = classify_question(message)
+    trace.question_type = route.question_type
+    trace.route_reason = route.reason
+    trace.preferred_sources = route.preferred_sources
+
     tool_defs = load_all_tools()
     tools_by_name = {t.name: t for t in tool_defs}
+
+    logger.info(
+        f"[TRACE {trace.trace_id}] question_type={trace.question_type} preferred={trace.preferred_sources} reason={trace.route_reason}"
+    )
 
     llm = ReasoningChatOpenAI(
         model=settings.coordinator_model,
@@ -228,10 +242,16 @@ async def stream_coordinator(
 
                 # tool_result 누적
                 if tool_result:
-                    for f in ("graph", "table", "chart", "cypher"):
+                    for f in ("graph", "table", "chart", "analytics", "cypher", "sql"):
                         val = getattr(tool_result, f, None)
                         if val is not None:
                             setattr(accumulated_tool_result, f, val)
+                    if tool_result.sources:
+                        current = accumulated_tool_result.sources or []
+                        for source in tool_result.sources:
+                            if source not in current:
+                                current.append(source)
+                        accumulated_tool_result.sources = current
                     if tool_result.summary:
                         accumulated_tool_result.summary = (
                             f"{accumulated_tool_result.summary}\n{tool_result.summary}".strip()
@@ -266,6 +286,10 @@ async def stream_coordinator(
             "tool_results": accumulated_tool_result.model_dump(),
             "steps": [s.model_dump() for s in steps],
             "reasoning": accumulated_reasoning.strip() or None,
+            "trace_id": trace.trace_id,
+            "question_type": trace.question_type,
+            "sources": accumulated_tool_result.sources or [],
+            "latency_ms": trace.latency_ms(),
         }, ensure_ascii=False)
 
     except Exception as e:
@@ -277,6 +301,7 @@ async def run_coordinator(
     message: str,
     history: list[dict] = [],
     context: dict = {},
+    trace: ChatTrace | None = None,
 ) -> ChatResponse:
     """비스트리밍 실행."""
     tokens: list[str] = []
@@ -285,8 +310,11 @@ async def run_coordinator(
     tool_result = ToolResult()
     steps: list[StepInfo] = []
 
+    trace = trace or ChatTrace()
+    final_event: dict | None = None
+
     try:
-        async for raw in stream_coordinator(message, history, context):
+        async for raw in stream_coordinator(message, history, context, trace=trace):
             event = json.loads(raw)
             t = event.get("type")
             if t == "token":
@@ -294,21 +322,27 @@ async def run_coordinator(
             elif t == "reasoning_token":
                 reasoning_parts.append(event["content"])
             elif t == "done":
+                final_event = event
                 all_actions = [ChatAction(**a) for a in event.get("actions", [])]
                 tr = event.get("tool_results", {})
                 tool_result = ToolResult(**tr) if tr else ToolResult()
                 steps = [StepInfo(**s) for s in event.get("steps", [])]
                 break
             elif t == "error":
-                return ChatResponse(message=f"오류: {event.get('content', '')}")
+                return ChatResponse(message=f"오류: {event.get('content', '')}", trace_id=trace.trace_id)
     except Exception as e:
         logger.error(f"run_coordinator(v3) 실패: {e}", exc_info=True)
-        return ChatResponse(message=f"처리 중 오류가 발생했습니다: {str(e)}")
+        return ChatResponse(message=f"처리 중 오류가 발생했습니다: {str(e)}", trace_id=trace.trace_id)
+
+    formatted_message = format_final_answer("".join(tokens) or "처리가 완료되었습니다.", tool_result)
 
     return ChatResponse(
-        message="".join(tokens) or "처리가 완료되었습니다.",
+        message=formatted_message,
         actions=all_actions,
         tool_results=tool_result,
         steps=steps,
         reasoning="".join(reasoning_parts).strip() or None,
+        trace_id=(final_event or {}).get("trace_id", trace.trace_id),
+        question_type=(final_event or {}).get("question_type", trace.question_type),
+        sources=(final_event or {}).get("sources", tool_result.sources or []),
     )
