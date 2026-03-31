@@ -82,6 +82,15 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
 
+    # ClickHouse 설정
+    clickhouse_uri: str = Field(default="", alias="CLICKHOUSE_URI")
+    clickhouse_user: str = Field(default="default", alias="CLICKHOUSE_USER")
+    clickhouse_password: str = Field(default="", alias="CLICKHOUSE_PASSWORD")
+    clickhouse_database: str = Field(default="default", alias="CLICKHOUSE_DATABASE")
+    clickhouse_secure: bool = Field(default=False, alias="CLICKHOUSE_SECURE")
+    clickhouse_timeout: int = Field(default=10, alias="CLICKHOUSE_TIMEOUT")
+    clickhouse_max_rows: int = Field(default=1000, alias="CLICKHOUSE_MAX_ROWS")
+
     model_config = {"env_file": ".env", "populate_by_name": True}
 
 

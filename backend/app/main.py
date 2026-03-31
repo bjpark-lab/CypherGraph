@@ -10,6 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.core.config import settings
 from app.core.database import init_db
 from app.api.routes import health, chat, graph, auth, conversations
+from app.services.clickhouse_service import check_clickhouse_connection
 
 os.environ["no_proxy"] = "*"
 os.environ["NO_PROXY"] = "*"
@@ -61,11 +62,21 @@ async def startup_event():
     logger.info(f"coordinator 모델: {settings.coordinator_model}")
     logger.info(f"cypher 모델: {settings.cypher_model}")
     logger.info(f"Neo4j URI: {settings.neo4j_uri}")
+    logger.info(
+        f"ClickHouse 설정: uri={'configured' if settings.clickhouse_uri else 'not-configured'}, "
+        f"database={settings.clickhouse_database}"
+    )
     try:
         await init_db()
         logger.info("PostgreSQL 테이블 초기화 완료")
     except Exception as e:
         logger.warning(f"PostgreSQL 연결 실패 — 대화 기록 기능 비활성화: {e}")
+
+    try:
+        clickhouse_ok = check_clickhouse_connection()
+        logger.info(f"ClickHouse 연결 상태: {'정상' if clickhouse_ok else '미연결/실패'}")
+    except Exception as e:
+        logger.warning(f"ClickHouse 초기 연결 확인 실패: {e}")
 
 
 @app.on_event("shutdown")

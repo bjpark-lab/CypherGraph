@@ -13,4 +13,5 @@ class ErrorResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     neo4j_connected: bool
+    clickhouse_connected: bool = False
     version: str = "1.0.0"
