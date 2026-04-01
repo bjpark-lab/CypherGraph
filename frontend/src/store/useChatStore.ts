@@ -12,6 +12,9 @@ export interface ChatEntry {
   steps?: StepInfo[]
   toolResults?: ToolResult
   reasoning?: string | null
+  traceId?: string | null
+  questionType?: string | null
+  sources?: string[]
   timestamp: number
 }
 

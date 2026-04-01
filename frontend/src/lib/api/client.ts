@@ -46,6 +46,10 @@ export type StreamEvent =
       tool_results: ToolResult
       steps: StepInfo[]
       reasoning?: string | null
+      trace_id?: string | null
+      question_type?: string | null
+      sources?: string[]
+      latency_ms?: number
     }
   | { type: 'error'; content: string }
 

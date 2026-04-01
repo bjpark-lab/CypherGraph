@@ -48,7 +48,10 @@ export const ToolResultSchema = z.object({
   graph: GraphResultSchema.nullable().optional(),
   table: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
   chart: z.record(z.string(), z.unknown()).nullable().optional(),
+  analytics: z.unknown().nullable().optional(),
   cypher: z.string().nullable().optional(),
+  sql: z.string().nullable().optional(),
+  sources: z.array(z.string()).nullable().optional(),
   summary: z.string().nullable().optional(),
 })
 
@@ -71,6 +74,9 @@ export const ChatResponseSchema = z.object({
   tool_results: ToolResultSchema.nullable().optional(),
   steps: z.array(StepInfoSchema).optional().default([]),
   reasoning: z.string().nullable().optional(),
+  trace_id: z.string().nullable().optional(),
+  question_type: z.string().nullable().optional(),
+  sources: z.array(z.string()).optional().default([]),
 })
 
 // ─── 쿼리 관련 스키마 ─────────────────────────────────────────────────────────

@@ -234,12 +234,13 @@ interface MessageBubbleProps {
   preContent?: string
   actions?: ChatAction[]
   steps?: StepInfo[]
+  toolResults?: { summary?: string | null; sources?: string[] | null }
   isStreaming?: boolean
   streamingStatus?: string | null
   onAction: (action: ChatAction) => void
 }
 
-function MessageBubble({ role, content, preContent, actions, steps, isStreaming, streamingStatus, onAction }: MessageBubbleProps) {
+function MessageBubble({ role, content, preContent, actions, steps, toolResults, isStreaming, streamingStatus, onAction }: MessageBubbleProps) {
   const isUser = role === 'user'
 
   if (isUser) {
@@ -285,6 +286,24 @@ function MessageBubble({ role, content, preContent, actions, steps, isStreaming,
               [&_tr:nth-child(even)_td]:bg-muted/20">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             </div>
+          </div>
+        )}
+
+        {/* 근거 요약 / 사용 소스 */}
+        {(toolResults?.summary || (toolResults?.sources && toolResults.sources.length > 0)) && (
+          <div className="max-w-[95%] rounded-lg border border-border/40 bg-muted/35 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+            {toolResults?.summary && (
+              <div>
+                <span className="font-medium text-foreground/80">근거 요약:</span>{' '}
+                <span className="whitespace-pre-wrap break-words">{toolResults.summary}</span>
+              </div>
+            )}
+            {toolResults?.sources && toolResults.sources.length > 0 && (
+              <div className="mt-1">
+                <span className="font-medium text-foreground/80">사용 소스:</span>{' '}
+                <span>{toolResults.sources.join(', ')}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -479,6 +498,9 @@ export function ChatPanel() {
             steps: [...liveSteps],
             toolResults: toolResults ?? undefined,
             reasoning: null,
+            traceId: event.trace_id ?? null,
+            questionType: event.question_type ?? null,
+            sources: event.sources ?? toolResults?.sources ?? [],
           })
 
           // tool 결과 반영
@@ -604,6 +626,7 @@ export function ChatPanel() {
               preContent={msg.preContent}
               actions={msg.actions}
               steps={msg.steps}
+              toolResults={msg.toolResults}
               isStreaming={msg.id === streamingMessageId}
               streamingStatus={msg.id === streamingMessageId ? streamingStatus : null}
               onAction={handleAction}
