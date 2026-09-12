@@ -165,14 +165,21 @@ def get_schema_info() -> dict[str, Any]:
         logger.warning(f"스키마 갱신 실패: {e}")
 
     structured = graph.get_structured_schema
+    node_properties = {
+        label: [p["property"] for p in props]
+        for label, props in structured.get("node_props", {}).items()
+    }
+    relationship_properties = {
+        rel_type: [p["property"] for p in props]
+        for rel_type, props in structured.get("rel_props", {}).items()
+    }
     return {
-        "node_labels": list(structured.get("node_props", {}).keys()),
+        "node_labels": list(node_properties.keys()),
         "relationship_types": [
             r["type"] for r in structured.get("relationships", [])
         ],
-        "properties": {
-            label: [p["property"] for p in props]
-            for label, props in structured.get("node_props", {}).items()
-        },
+        "properties": node_properties,
+        "node_properties": node_properties,
+        "relationship_properties": relationship_properties,
         "raw_schema": graph.schema,
     }

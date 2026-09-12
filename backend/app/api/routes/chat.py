@@ -48,8 +48,11 @@ async def chat(
             f"[TRACE {response.trace_id}] question_type={response.question_type} sources={response.sources} latency_ms={trace.latency_ms():.1f}"
         )
     except Exception as e:
-        logger.error(f"채팅 처리 실패: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"채팅 처리 실패: {str(e)}")
+        logger.exception("채팅 처리 실패")
+        raise HTTPException(
+            status_code=500,
+            detail="채팅 처리 중 오류가 발생했습니다.",
+        ) from e
 
     # 로그인 상태이고 DB가 사용 가능할 때만 대화 기록 저장
     if user and db is not None:
@@ -90,8 +93,13 @@ async def chat_stream(
                         final_data = event
                 except Exception:
                     pass
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+        except Exception:
+            logger.exception("채팅 스트리밍 실패")
+            error_event = {
+                "type": "error",
+                "content": "채팅 스트리밍 중 오류가 발생했습니다.",
+            }
+            yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
         finally:
             yield "data: [DONE]\n\n"
 

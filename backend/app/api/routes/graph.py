@@ -33,8 +33,11 @@ async def run_graph_query(request: QueryRequest):
             execution_time_ms=elapsed_ms,
         )
     except Exception as e:
-        logger.error(f"쿼리 실행 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"쿼리 실행 실패: {str(e)}")
+        logger.exception("쿼리 실행 실패")
+        raise HTTPException(
+            status_code=500,
+            detail="쿼리 실행 중 오류가 발생했습니다.",
+        ) from e
 
 
 @router.get("/graph/schema", response_model=SchemaResponse)
@@ -44,5 +47,8 @@ async def get_graph_schema():
         schema = get_schema_info()
         return SchemaResponse(**schema)
     except Exception as e:
-        logger.error(f"스키마 조회 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"스키마 조회 실패: {str(e)}")
+        logger.exception("스키마 조회 실패")
+        raise HTTPException(
+            status_code=500,
+            detail="스키마 조회 중 오류가 발생했습니다.",
+        ) from e
